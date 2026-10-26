@@ -1,0 +1,92 @@
+{
+  "image": "D110_M_V4.31_wallet-transaction-visa_EXPERIMENTAL.bin",
+  "sha256": "1dfdcafc28ef9da34313867fe7716a9775e74a48a60e53876a3496315b5cdf57",
+  "image_bytes": 123368,
+  "extension_offset": 117948,
+  "extension_bytes": 5392,
+  "symbols": {
+    "probe": {
+      "offset": 1736,
+      "size": 176
+    },
+    "transaction": {
+      "offset": 544,
+      "size": 1192
+    },
+    "activate": {
+      "offset": 1912,
+      "size": 880
+    },
+    "apdu_exchange": {
+      "offset": 2792,
+      "size": 568
+    },
+    "find_tag": {
+      "offset": 3360,
+      "size": 364
+    },
+    "fill_dol": {
+      "offset": 3724,
+      "size": 828
+    },
+    "cryptogram": {
+      "offset": 4552,
+      "size": 412
+    },
+    "exchange": {
+      "offset": 4964,
+      "size": 428
+    },
+    "wallet_dispatch": {
+      "offset": 0,
+      "size": 544
+    }
+  },
+  "previous_dispatch": 16959288,
+  "dispatch": 16960700,
+  "source_sha256": "303aac614c0e2f14a1d571740c5929f83e76e5bb5adc29043e3d5460717ca42b",
+  "refill_base_sha256": "c320111084d1199d6947e704212a7d8b98d14171cd4352931b0ada90e7a40635",
+  "compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+  "compiler_flags": [
+    "--target=arm-none-eabi",
+    "-mcpu=cortex-m0",
+    "-mthumb",
+    "-Os",
+    "-ffreestanding",
+    "-fno-builtin",
+    "-fno-stack-protector",
+    "-fno-unwind-tables",
+    "-fno-asynchronous-unwind-tables",
+    "-fno-jump-tables",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-DPREV_DISPATCH=16959288u"
+  ],
+  "hardware_verified": true,
+  "offline_validation": {
+    "date": "2026-10-26",
+    "transaction_emulator": "passed; Mastercard and Visa synthetic-card cases",
+    "upload_receiver": "passed; 617 chunks",
+    "installer_gates": "passed",
+    "report": "../experimental/wallet-reader/VISA.md"
+  },
+  "hardware_installation": {
+    "date": "2026-10-26",
+    "device_checksum_verified": true,
+    "device_commit_confirmed": true,
+    "boot_and_bluetooth_capability_verified": true,
+    "reported_protocol_version": 2,
+    "reported_supported_networks": [
+      "mastercard",
+      "visa"
+    ],
+    "physical_visa_transaction_tested": true,
+    "post_install_print_tested": false
+  },
+  "hardware_validation": {
+    "date": "2026-10-26",
+    "scope": "Owner-presented physical Visa credit/debit card; SELECT and GPO returned ARQC and 9000; two APDUs; no GENERATE AC, processor submission, issuer authorization or post-install print test. Cryptogram parsed, not cryptographically verified.",
+    "report": "../experimental/wallet-reader/VISA.md"
+  }
+}

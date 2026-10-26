@@ -12,13 +12,14 @@ The amount was **₹1.00**, used only in the local card-side exchange. **No paym
 | --- | --- |
 | SELECT reader | Payment directory and selected application metadata: AIDs, labels, NFC activation information, FCI and status words. |
 | Local transaction | One fixed INR 1.00 Mastercard exchange; reports stage, status word, cryptogram type, counter and related diagnostic fields. |
+| Physical Visa experiment | Explicit `--network visa`: Visa credit/debit SELECT and one qVSDC GPO. Requires the separate [Visa candidate firmware](experimental/wallet-reader/VISA.md). |
 
 This is an experimental reader, not a certified EMV terminal. It does not bypass Wallet authentication, enumerate all Wallet cards, or export PAN/track data from transaction records. Cryptograms are parsed, not cryptographically verified. A test may increment the card's transaction counter even if its response is lost.
 
 ## Supported hardware
 
 - **NIIMBOT D110_M**, firmware **4.31**, hardware **4.01** only. D110 and other similarly named models are not validated.
-- An iPhone presenting the owner's Apple Wallet Mastercard. The transaction AID is fixed to `A0000000041010`; other networks are not implemented.
+- An iPhone presenting the owner's Apple Wallet Mastercard (`A0000000041010`). The separately packaged Visa candidate also implements physical Visa credit/debit (`A0000000031010`); it has passed offline tests, installation/boot checks and an owner-presented physical Visa test returning ARQC and `9000` in SELECT → GPO. Visa Electron, other AIDs and Visa Wallet CDCVM are outside this candidate's scope.
 - A computer with Bluetooth LE and Python **3.10+**. The physical test used macOS; other host platforms have not been hardware-tested.
 - For source builds: Clang with the ARM target. The bundled image was built with Apple Clang 21.0.0.
 
@@ -96,6 +97,8 @@ The client waits for card presence and makes one application-level attempt. It r
 
 The amount, currency and country are fixed to INR 1.00 / India. The date and random challenge are supplied by the host. There is no second GENERATE AC, issuer authentication, or payment submission. AAC, ARQC and TC are reported distinctly; none is treated as proof of issuer authorization.
 
+For a physical Visa card, install the separate candidate and add `--network visa`. See [Visa installation, behavior and validation](experimental/wallet-reader/VISA.md). The default installer image above remains the hardware-tested Mastercard release. The client refuses Visa on that older firmware before sending a test command.
+
 Captures contain card-supplied metadata or transaction material, including cryptograms and issuer application data. Keep them private. `captures/`, installer `logs/`, and JSONL files are ignored by Git. **No real card captures are included in this repository.** See [transaction behavior and wire protocol](experimental/wallet-reader/TRANSACTION.md) and [hardware validation](experimental/wallet-reader/TRANSACTION-VALIDATION.md).
 
 ## Build and verify offline
@@ -107,7 +110,7 @@ python experimental/wallet-reader/verify_transaction.py
 python verification/verify_upload.py \
   --image build/wallet-transaction/D110_M_V4.31_wallet-transaction_EXPERIMENTAL.bin
 python verification/verify_installer.py
-cmp firmware/D110_M_V4.31_wallet-transaction_EXPERIMENTAL.bin \
+cmp firmware/D110_M_V4.31_wallet-transaction-visa_EXPERIMENTAL.bin \
   build/wallet-transaction/D110_M_V4.31_wallet-transaction_EXPERIMENTAL.bin
 ```
 
@@ -123,6 +126,6 @@ Build output goes to ignored `build/`. Matching the bundled bytes requires a com
 - `verification/`: stock firmware emulator, upload checks and installer checks.
 - `printer_bluetooth.py`: explicit-address installer and inspection client; local logs stay ignored.
 
-Extracted from [niimbot-d110m-patched-firmware](https://github.com/pranavms13/niimbot-d110m-patched-firmware), whose base was commit `a63b72fe6de9ac645d966fe1adeba269dbe175d6`, plus the locally developed Wallet experiment. The inherited code is included so this repository builds without a sibling checkout. The installer was adapted to remove machine-specific addresses and paths. The firmware source is unchanged from the successful test.
+Extracted from [niimbot-d110m-patched-firmware](https://github.com/pranavms13/niimbot-d110m-patched-firmware), whose base was commit `a63b72fe6de9ac645d966fe1adeba269dbe175d6`, plus the locally developed Wallet experiment. The inherited code is included so this repository builds without a sibling checkout. The installer was adapted to remove machine-specific addresses and paths. The original Mastercard release is retained separately from the new Visa source and candidate.
 
 The stock NIIMBOT firmware is third-party material; its inclusion does not grant a new license to it. No blanket license is asserted for this collection. Bluetooth packet framing follows the work in [MultiMote/niimbluelib](https://github.com/MultiMote/niimbluelib). Protocol references and the observed chaining fix are documented alongside the experiment.

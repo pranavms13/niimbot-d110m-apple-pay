@@ -200,8 +200,8 @@ LOCAL int find_tag(const u8 *data,u32 size,u32 wanted,const u8 **value,u32 *leng
 /* Fixed local test: INR 1.00, India; normal CDCVM requested, no bypass,
  * transit or deferred-authorization bits. No ODA/CVM success is invented.
  * Unknown DOL fields receive zero bytes and are counted in the report. */
-LOCAL int fill_dol(const u8 *dol,u32 n,const u8 *params,u8 *out,u32 *size,u8 *unknown) {
-    u32 i=0,total=0;
+LOCAL int fill_dol(const u8 *dol,u32 n,const u8 *params,u8 *out,u32 *size,u8 *unknown,u32 visa) {
+    u32 i=0,total=0,required=0;
     while(i<n) {
         u32 tag=dol[i++];
         if((tag&31)==31) {
@@ -210,6 +210,15 @@ LOCAL int fill_dol(const u8 *dol,u32 n,const u8 *params,u8 *out,u32 *size,u8 *un
         }
         if(i>=n)return 6;
         u32 len=dol[i++];if(!len || total+len>96)return 7;
+        if(visa) {
+            u32 bit=0,want=0;
+            if(tag==0x9f66){bit=1;want=4;}
+            if(tag==0x9f02){bit=2;want=6;}
+            if(tag==0x9f37){bit=4;want=4;}
+            if(tag==0x5f2a){bit=8;want=2;}
+            if(bit && ((required&bit) || len!=want))return 12;
+            required|=bit;
+        }
         u8 value[8];u32 expected=0,numeric=0;
         for(u32 j=0;j<8;j++)value[j]=0;
         if(tag==0x9f02) {expected=6;numeric=1;value[4]=1;}
@@ -218,14 +227,17 @@ LOCAL int fill_dol(const u8 *dol,u32 n,const u8 *params,u8 *out,u32 *size,u8 *un
         else if(tag==0x9a) {expected=3;numeric=1;for(u32 j=0;j<3;j++)value[j]=params[j];}
         else if(tag==0x9f37) {expected=4;for(u32 j=0;j<4;j++)value[j]=params[3+j];}
         else if(tag==0x9c) {expected=1;numeric=1;}
-        else if(tag==0x9f1d) {expected=8;value[0]=4;value[1]=0x80;value[2]=0xa0;}
+        /* Visa: qVSDC and online cryptogram required. No MSD, ODA, PIN,
+         * signature, contact interface or CDCVM capability is claimed. */
+        else if(tag==0x9f66 && visa) {expected=4;value[0]=0x20;value[1]=0x80;}
+        else if(tag==0x9f1d && !visa) {expected=8;value[0]=4;value[1]=0x80;value[2]=0xa0;}
         else if(tag==0x95) {expected=5;value[0]=0x80;value[2]=0x80;value[3]=0x80;}
-        else if(tag==0x9f35) {expected=1;numeric=1;value[0]=0x22;}
-        else if(tag==0x9f33) {expected=3;value[0]=0x20;}
+        else if(tag==0x9f35) {expected=1;numeric=1;value[0]=visa?0x24:0x22;}
+        else if(tag==0x9f33) {expected=3;value[0]=visa?0:0x20;}
         else if(tag==0x9f34) {expected=3;value[0]=0x3f;}
-        else if(tag==0x9f09) {expected=2;value[1]=2;}
+        else if(tag==0x9f09 && !visa) {expected=2;value[1]=2;}
         else if(tag==0x9f21) {expected=3;numeric=1;}
-        else if(tag==0x9f40) {expected=5;value[0]=0x80;}
+        else if(tag==0x9f40) {expected=5;value[0]=visa?0x60:0x80;}
         else if(tag==0x9f1b) {expected=4;}
         else {if(*unknown<255)(*unknown)++;}
         for(u32 j=0;j<len;j++) {
@@ -238,38 +250,40 @@ LOCAL int fill_dol(const u8 *dol,u32 n,const u8 *params,u8 *out,u32 *size,u8 *un
         }
         total+=len;
     }
+    if(visa && required!=15)return 12;
     *size=total;return 0;
 }
 
-LOCAL int cryptogram(const u8 *data,u32 size,u8 *p) {
-    const u8 *v;u32 n;int status;
+LOCAL int cryptogram(const u8 *data,u32 size,u8 *p,u32 visa) {
+    const u8 *v;u32 n,missing_cid=0;int status;
     if(size>=2 && data[0]==0x80) {
         if(data[1]!=size-2 || size<13 || size>45)return 6;
         p[14]=data[2];p[15]=data[3];p[16]=data[4];
         for(u32 i=0;i<8;i++)p[17+i]=data[5+i];
         p[25]=size-13;for(u32 i=13;i<size;i++)p[26+i-13]=data[i];
     } else {
-        status=find_tag(data,size,0x9f27,&v,&n);if(status || n!=1)return 6;p[14]=v[0];
+        status=find_tag(data,size,0x9f27,&v,&n);if(status || n>1 || (!n && (!visa || v!=data)))return 6;
+        if(n)p[14]=v[0];else missing_cid=8;
         status=find_tag(data,size,0x9f36,&v,&n);if(status || n!=2)return 6;p[15]=v[0];p[16]=v[1];
         status=find_tag(data,size,0x9f26,&v,&n);if(status || n!=8)return 6;
         for(u32 i=0;i<8;i++)p[17+i]=v[i];
-        status=find_tag(data,size,0x9f10,&v,&n);if(status || n>32)return 6;
+        status=find_tag(data,size,0x9f10,&v,&n);if(status || n>32 || (visa && !n))return 6;
         p[25]=n;for(u32 i=0;i<n;i++)p[26+i]=v[i];
     }
     if((p[14]&0xc0)==0xc0)return 6;
-    p[6]|=4;return 0;
+    p[6]|=4|missing_cid;return 0;
 }
 
 /* WT v1 summary only: never return PAN/track data from records. One GPO,
  * up to 16 AFL records and at most ONE GENERATE AC, all in one RF session. */
-LOCAL int transaction(const u8 *params,u8 *p) {
+LOCAL int transaction(const u8 *params,u8 *p,u32 visa) {
     u8 meta[54],apdu[104],response[512],afl[32],cdol[64];
     u32 size,n=0,afln=0,cdoln=0,afli=0,record=0,start=now();
     Link link;for(u32 i=0;i<54;i++)meta[i]=0;
     int status=activate(&link,meta);
     p[4]=meta[4];p[5]=meta[5];if(status)goto done;
     apdu[0]=0;apdu[1]=0xa4;apdu[2]=4;apdu[3]=0;apdu[4]=7;
-    apdu[5]=0xa0;apdu[6]=0;apdu[7]=0;apdu[8]=0;apdu[9]=4;
+    apdu[5]=0xa0;apdu[6]=0;apdu[7]=0;apdu[8]=0;apdu[9]=visa?3:4;
     apdu[10]=0x10;apdu[11]=0x10;apdu[12]=0;size=13;p[4]=5;
     for(u32 step=0;step<20;step++) {
         if(elapsed(start,30000)) {status=3;goto done;}
@@ -287,18 +301,26 @@ LOCAL int transaction(const u8 *params,u8 *p) {
             status=find_tag(response,n,0x9f38,&v,&len);if(status)goto done;
             if(len>32) {status=7;goto done;}
             p[156]=len;for(u32 i=0;i<len;i++)p[157+i]=v[i];
-            u32 dn=0;status=fill_dol(v,len,params,apdu+7,&dn,p+11);if(status)goto done;
+            u32 dn=0;status=fill_dol(v,len,params,apdu+7,&dn,p+11,visa);if(status)goto done;
             apdu[0]=0x80;apdu[1]=0xa8;apdu[2]=0;apdu[3]=0;
             apdu[4]=dn+2;apdu[5]=0x83;apdu[6]=dn;apdu[7+dn]=0;
             size=dn+8;p[4]=6;continue;
         }
         if(p[4]==6) {
+            /* qVSDC is complete at GPO. Never fall through to the Mastercard
+             * record/GENERATE AC path, even if no cryptogram was returned. */
+            if(visa) {
+                if(!n || response[0]!=0x77){status=11;goto done;}
+                status=find_tag(response,n,0x82,&v,&len);if(status || len!=2){status=6;goto done;}
+                p[12]=v[0];p[13]=v[1];
+                status=cryptogram(response,n,p,1);goto done;
+            }
             if(n>=4 && response[0]==0x80) {
                 if(response[1]!=n-2){status=6;goto done;}
                 p[12]=response[2];p[13]=response[3];v=response+4;len=n-4;
             } else {
                 status=find_tag(response,n,0x9f26,&v,&len);if(status)goto done;
-                if(len) {status=cryptogram(response,n,p);goto done;}
+                if(len) {status=cryptogram(response,n,p,0);goto done;}
                 status=find_tag(response,n,0x82,&v,&len);if(status || len!=2){status=6;goto done;}
                 p[12]=v[0];p[13]=v[1];
                 status=find_tag(response,n,0x94,&v,&len);if(status)goto done;
@@ -322,13 +344,13 @@ LOCAL int transaction(const u8 *params,u8 *p) {
             }
             record++;
             if(record>afl[afli+2]) {afli+=4;if(afli<afln)record=afl[afli+1];}
-        } else if(p[4]==8) {status=cryptogram(response,n,p);goto done;}
+        } else if(p[4]==8) {status=cryptogram(response,n,p,0);goto done;}
         if(afli<afln) {
             apdu[0]=0;apdu[1]=0xb2;apdu[2]=record;apdu[3]=afl[afli]|4;apdu[4]=0;
             size=5;p[4]=7;continue;
         }
         if(!cdoln){status=10;goto done;}
-        u32 dn=0;status=fill_dol(cdol,cdoln,params,apdu+5,&dn,p+11);if(status)goto done;
+        u32 dn=0;status=fill_dol(cdol,cdoln,params,apdu+5,&dn,p+11,0);if(status)goto done;
         apdu[0]=0x80;apdu[1]=0xae;apdu[2]=0x80;apdu[3]=0;apdu[4]=dn;apdu[5+dn]=0;
         size=dn+6;p[4]=8;
     }
@@ -345,14 +367,15 @@ int wallet_dispatch(const u8 *request,u8 *output,u8 *output_len) {
     p[0]='W';p[1]='A';p[2]=1;p[3]=1;
     u32 transaction_reply=0;
     if(request[4]==1 && request[5]==0) p[3]=0x10;
-    else if(request[4]==1 && request[5]==1) {p[1]='T';p[3]=0x11;transaction_reply=1;}
-    else if(request[4]==12 && request[5]=='T' && request[6]=='X' && request[7]=='N' &&
-            request[8]==1 && request[9]==0xa5) {
-        p[1]='T';transaction_reply=1;
-        u32 valid=1;
+    else if(request[4]==1 && request[5]==1) {p[1]='T';p[2]=2;p[3]=0x11;p[197]=3;transaction_reply=1;}
+    else if(((request[4]==12 && request[8]==1) || (request[4]==13 && request[8]==2)) &&
+            request[5]=='T' && request[6]=='X' && request[7]=='N' && request[9]==0xa5) {
+        p[1]='T';p[2]=request[8];transaction_reply=1;
+        u32 visa=request[8]==2?request[17]:0,valid=visa<=1;
+        if(p[2]==2 && valid)p[197]=visa;
         for(u32 i=10;i<13;i++)if((request[i]&15)>9 || (request[i]>>4)>9)valid=0;
         if(!request[11] || request[11]>0x12 || !request[12] || request[12]>0x31)valid=0;
-        if(valid)p[3]=busy()?2:transaction(request+10,p);
+        if(valid)p[3]=busy()?2:transaction(request+10,p,visa);
     }
     else if(request[4]>=8 && request[4]<=24 && request[5]=='W' && request[6]=='A' &&
         request[7]=='L' && request[8]=='L' && request[9]=='E' && request[10]=='T' &&

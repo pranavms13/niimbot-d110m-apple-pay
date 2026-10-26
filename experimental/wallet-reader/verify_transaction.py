@@ -2,7 +2,7 @@
 import asyncio
 from datetime import datetime
 from verify import Device,select
-from wallet_transaction import request,execute,decode_transaction
+from wallet_transaction import request,execute,decode_transaction,require_network
 
 PARAMS=bytes.fromhex('26102611223344')
 REQUEST=b'TXN\x01\xa5'+PARAMS
@@ -108,6 +108,49 @@ d=Device(frames);r=d.command(REQUEST)
 assert r['status']==6 and r['frame_diagnostics']['reason']==2 and r['generate_ac_sent']
 print('PASS: observed six-record/73-byte CDOL transaction, correct PICC ACK numbering and wrong-ACK diagnostic')
 
+# Visa qVSDC: synthetic physical-card responses. The independent wire fixture
+# checks INR 1.00, TTQ, country, currency, TVR, date and random challenge.
+VISA_REQUEST=b'TXN\x02\xa5'+PARAMS+b'\x01'
+VISA_SELECT=bytes.fromhex('00a4040007a000000003101000')
+VISA_PDOL=bytes.fromhex('9f66049f02069f03069f1a0295055f2a029a039c019f3704')
+VISA_DATA=bytes.fromhex('208000000000000001000000000000000356800080800003562610260011223344')
+VISA_GPO=b'\x80\xa8\0\0'+bytes([len(VISA_DATA)+2,0x83,len(VISA_DATA)])+VISA_DATA+b'\0'
+def visa_fci(pdol=VISA_PDOL):
+    return tlv('6f',tlv('84',bytes.fromhex('a0000000031010'))+tlv('a5',tlv('9f38',pdol)))+b'\x90\0'
+def visa_gpo(cid=None,extra=b''):
+    body=tlv('82',b'\x20\0')+tlv('57',SENTINEL)+tlv('9f36',b'\x12\x34')+tlv('9f26',AC)+tlv('9f10',b'\x01\x02')
+    if cid is not None:body+=tlv('9f27',bytes([cid]))
+    return tlv('77',body+extra)+b'\x90\0'
+for cid in (None,0,0x40,0x80):
+    for fsc in (16,64):
+        pairs=[(VISA_SELECT,visa_fci()),(VISA_GPO,visa_gpo(cid,tlv('9f4b',b'\xab'*160)))]
+        d=Device(dialogue(pairs,fsc=fsc));r=d.command(VISA_REQUEST)
+        assert r['status']==0 and r['network']=='visa' and r['protocol_version']==2
+        assert r['gpo_sent'] and not r['generate_ac_sent'] and r['apdu_count']==2 and r['records_read']==0
+        assert r['cryptogram']==AC.hex() and r['aip']=='2000' and r['application_transaction_counter']==0x1234
+        assert r['cid']==(None if cid is None else f'{cid:02x}')
+        if cid is None:assert r['cryptogram_type']=='Unknown (card omitted CID)'
+        assert r['zero_filled_unknown_dol_fields']==0 and SENTINEL not in d.sent[-1]
+print('PASS: Visa SELECT/GPO only; exact INR 1.00 PDOL; optional CID remains unknown; 16-byte FSC and chained GPO; no track export')
+
+for response in (None,b'\x69\x85',tlv('80',b'\x20\0')+b'\x90\0',
+                 GPO_RESPONSE,visa_gpo(0xc0),visa_gpo(extra=tlv('9f26',AC)),
+                 visa_gpo(extra=tlv('9f27',b'')),
+                 tlv('77',tlv('82',b'\x20\0')+tlv('9f26',AC))+b'\x90\0',
+                 b'\x77\x80\x90\0'):
+    d=Device(dialogue([(VISA_SELECT,visa_fci()),(VISA_GPO,response)]));r=d.command(VISA_REQUEST)
+    assert r['status']!=0 and r['gpo_sent'] and not r['generate_ac_sent'] and not r['cryptogram_received']
+    assert r['apdu_count']==2 and r['records_read']==0
+for pdol in (b'',VISA_PDOL[3:],VISA_PDOL.replace(b'\x9f\x66\x04',b'\x9f\x66\x03'),
+             VISA_PDOL+b'\x9f\x66\x04',VISA_PDOL+b'\xdf\x01\x60',VISA_PDOL+b'\xdf'):
+    d=Device(dialogue([(VISA_SELECT,visa_fci(pdol))]));r=d.command(VISA_REQUEST)
+    assert r['status']!=0 and not r['gpo_sent'] and r['apdu_count']==1
+d=Device(dialogue([(VISA_SELECT,b'\x6a\x82')]));r=d.command(VISA_REQUEST)
+assert r['status']==9 and r['apdu_count']==1 and not r['gpo_sent']
+for payload in (VISA_REQUEST[:-1]+b'\x02',VISA_REQUEST[:-1],VISA_REQUEST+b'\0'):
+    d=Device();assert d.command(payload)['status']==1 and not d.field
+print('PASS: Visa SELECT failures, missing/invalid PDOL, malformed GPO, missing AC/ATC, duplicate tags and timeouts stop without fallback or GENERATE AC')
+
 def wire(status=0,stage=8,flags=7):
     b=bytearray(190);b[:3]=b'WT\1';b[3:7]=bytes([status,stage,0,flags]);return bytes(b)
 class FakeConnection:
@@ -125,7 +168,17 @@ async def client_tests():
     else:raise AssertionError('Timeout not propagated')
     assert c.calls==1 and 'unknown' in log[-1]['outcome']
     c=FakeConnection([wire(3,1,0),wire()]);log=[];await execute(c,REQUEST,2,log.append);assert c.calls==2
+    for status,flags in ((0,5),(0,13),(6,1),(3,1),(9,1)):
+        reply=bytearray(wire(status,6,flags))+bytes(8);reply[2]=2;reply[197]=1
+        c=FakeConnection([bytes(reply)]);log=[];await execute(c,VISA_REQUEST,2,log.append)
+        assert c.calls==1 and not log[-1]['generate_ac_sent']
 asyncio.run(client_tests())
 assert request(datetime(2026,10,26),bytes.fromhex('11223344'))==REQUEST
+assert request(datetime(2026,10,26),bytes.fromhex('11223344'),'visa')==VISA_REQUEST
+legacy=decode_transaction(wire(17,0,0));require_network(legacy,'mastercard')
+try:require_network(legacy,'visa')
+except RuntimeError:pass
+else:raise AssertionError('Visa accepted old Mastercard-only firmware')
+cap=Device().command(b'\1');require_network(cap,'visa');require_network(cap,'mastercard')
 print('PASS: host never retries GPO/GENERATE AC or ambiguous transport failures; only pre-application discovery is retried')
 print('LIMIT: cryptograms are parsed, not cryptographically verified; peripheral and Wallet behavior require hardware testing.')

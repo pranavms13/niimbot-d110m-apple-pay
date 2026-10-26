@@ -1,5 +1,7 @@
 # Local INR 1.00 Mastercard transaction experiment
 
+This page describes the retained Mastercard flow and original hardware-tested release. The current source also supports an explicit physical Visa mode; see [Visa candidate, protocol v2 and validation](VISA.md). The legacy Mastercard request remains supported unchanged.
+
 **Hardware-tested successfully on 2026-10-26:** the owner's iPhone returned an ARQC and `9000` after nine APDUs, and the owner confirmed Wallet's checkmark/payment feedback. No payment was submitted. See [exact image, tests and hardware results](TRANSACTION-VALIDATION.md).
 
 This explicitly requested experiment performs the **card-side NFC exchange only** using the owner's presented Apple Wallet Mastercard. It sends no transaction to an acquirer, processor, payment network or issuer. There is no network-submission implementation. The fixed test amount is **INR 1.00**; currency and terminal country are `0356` (India). The card can increment its internal transaction counter. This is a diagnostic experiment, not a certified payment terminal or a complete EMV kernel.
