@@ -1,0 +1,72 @@
+{
+  "image": "D110_M_V4.31_wallet-transaction_EXPERIMENTAL.bin",
+  "sha256": "31d2819cdca1aad3d8abb840c55144ae02ef05e2b7f9702459ae87bb5d7bdb57",
+  "image_bytes": 122972,
+  "extension_offset": 117948,
+  "extension_bytes": 4996,
+  "symbols": {
+    "transaction": {
+      "offset": 504,
+      "size": 1096
+    },
+    "probe": {
+      "offset": 1600,
+      "size": 176
+    },
+    "activate": {
+      "offset": 1776,
+      "size": 880
+    },
+    "apdu_exchange": {
+      "offset": 2656,
+      "size": 568
+    },
+    "find_tag": {
+      "offset": 3224,
+      "size": 364
+    },
+    "fill_dol": {
+      "offset": 3588,
+      "size": 636
+    },
+    "cryptogram": {
+      "offset": 4224,
+      "size": 344
+    },
+    "exchange": {
+      "offset": 4568,
+      "size": 428
+    },
+    "wallet_dispatch": {
+      "offset": 0,
+      "size": 504
+    }
+  },
+  "previous_dispatch": 16959288,
+  "dispatch": 16960700,
+  "source_sha256": "09b681ddcbf096907ab39abb0421fb63d1b32e577643cf4a97d7b13463e80e8b",
+  "refill_base_sha256": "c320111084d1199d6947e704212a7d8b98d14171cd4352931b0ada90e7a40635",
+  "compiler": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+  "compiler_flags": [
+    "--target=arm-none-eabi",
+    "-mcpu=cortex-m0",
+    "-mthumb",
+    "-Os",
+    "-ffreestanding",
+    "-fno-builtin",
+    "-fno-stack-protector",
+    "-fno-unwind-tables",
+    "-fno-asynchronous-unwind-tables",
+    "-fno-jump-tables",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-DPREV_DISPATCH=16959288u"
+  ],
+  "hardware_verified": true,
+  "hardware_validation": {
+    "date": "2026-10-26",
+    "scope": "Owner-presented Apple Wallet Mastercard; nine APDUs, ARQC, 9000; owner reported checkmark or sound. No processor submission; no issuer authorization; no post-install print test.",
+    "report": "../experimental/wallet-reader/TRANSACTION-VALIDATION.md"
+  }
+}

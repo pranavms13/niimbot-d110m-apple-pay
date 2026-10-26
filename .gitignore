@@ -1,0 +1,13 @@
+.venv/
+.venv-*/
+__pycache__/
+*.py[cod]
+.DS_Store
+build/
+captures/
+logs/
+hardware-verification/
+*.jsonl
+wallet-directory*.json
+wallet-application*.json
+transaction-*.json
